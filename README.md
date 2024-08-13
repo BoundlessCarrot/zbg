@@ -4,6 +4,6 @@ This will (mostly) be the backend for a backgammon portion of my website. I find
 
 There are some specifics I want for my implementation too:
 - [ ] Engine and API written in zig, using Zap for the routing
-- [ ] Supabase for DB stuff - user/elo pairs, game histories
+- [ ] Supabase for DB stuff - user structs (id, nsme, elo), game histories (winner/loser, dice/move history, elo movement)
 - [ ] No "real" accounts! I want to give people a unique ID number that's not visible to anyone else. Most other info will be stored in a user cookie, and updates the one on the db. You can then track stats while not having to deal with emails and passwords, while also allowing people to recover their game history if they clear their brower history/cookies
 - [ ] I want to use as little JS and as much HTML on the frontend as possible. Perhaps even some HTMX for API calls?

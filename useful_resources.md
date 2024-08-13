@@ -8,3 +8,4 @@
 - [Linear regression for backgammon](https://www.aifactory.co.uk/newsletter/2021_01_backgammon_linear.htm)
 - [On the motif engine](https://bkgm.com/motif/engine.html)
 - [Zap: API package for zig](https://github.com/zigzap/zap)
+- [GNUbg](https://git.savannah.gnu.org/cgit/gnubg.git/)

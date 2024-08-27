@@ -37,7 +37,7 @@ const Player = struct {
 const GameState = struct {
     board: Board,
     players: [2]Player,
-    currentPlayer: u8,
+    currentPlayer: Player,
     dice: [2]u8,
 
     const Self = @This();
@@ -58,38 +58,41 @@ const RulesEngine = struct {
     }
 
     pub fn isGameOver(gameState: *GameState) bool {
-        return false;
+       return (gameState.board.points[25].count == 15 or gameState.board.points[0].count == 15); 
     }
 
     pub fn getWinner(gameState: *GameState) Player {
-        return gameState.players[0];
+        var player: Player = undefined;
+        if (gameState.board.points[0].count == 15) {
+            player = gameState.players[0];
+        } else if (gameState.board.points[24].count == 15) {
+            player = gameState.players[1];
+        }
+        return player; 
     }
 
-    pub fn getValidMoves(gameState: *GameState, allocator: std.mem.Allocator) []Point {
-        var moves = std.ArrayList(u8).init(allocator);
+    pub fn getAllValidMoves(gameState: *GameState, allocator: std.mem.Allocator) []Point {
+        var moves = std.AutoHashMap(Point, []Point).init(allocator);
+        defer moves.deinit();
+
+        const internalGameBoard: [26]Point = if (std.mem.eql(gameState.currentPlayer.name, "Player 1")) gameState.board.points else std.mem.reverse(Point, gameState.board.points);
         
-        for (gameState.board.points, 0..) |point, i| {
+        for (internalGameBoard, 0..) |point, i| {
             if (point.player == gameState.currentPlayer) {
                 const jump_0 = gameState.board.points[i + gameState.dice[0]];
                 const jump_1 = gameState.board.points[i + gameState.dice[1]];
 
-                try moves.append(if (jump_0.player == gameState.currentPlayer) jump_0 else undefined);
-                try moves.append(if (jump_1.player == gameState.currentPlayer) jump_1 else undefined);
+                if (canMove(gameState.currentPlayer, jump_0)) moves.put(point, jump_0);
+                if (canMove(gameState.currentPlayer, jump_1)) moves.put(point, jump_1);
 
                 const jump_2 = if (jump_0.player == gameState.currentPlayer) gameState.board.points[i + gameState.dice[0] + gameState.dice[0]] else undefined;
                 const jump_3 = if (jump_1.player == gameState.currentPlayer) gameState.board.points[i + gameState.dice[1] + gameState.dice[0]] else undefined;
             }
         }
-        // for (var i: u8 = 0; i < 26; i += 1) {
-        //     if (gameState.board.points[i].player == gameState.currentPlayer) {
-        //         if (RulesEngine.isValidMove(gameState, i, i + gameState.dice[0])) {
-        //             std.mem.push(&moves, i + gameState.dice[0]);
-        //         }
-        //         if (RulesEngine.isValidMove(gameState, i, i + gameState.dice[1])) {
-        //             std.mem.push(&moves, i + gameState.dice[1]);
-        //         }
-        //     }
-        // }
         return moves;
+    }
+
+    fn canMove(player: Player, move: Point) bool {
+        return move.player == player or move.count <= 1;
     }
 };

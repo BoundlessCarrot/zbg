@@ -1,34 +1,50 @@
 const std = @import("std");
 
 pub const Board = struct {
-    points: [26]Point,
+    points: [24]Point,
     bar: [2]u8,
     bearOff: [2]u8,
 
     const Self = @This();
 
     pub fn init() Board {
-        const points = [_]Point{Point{ .player = undefined, .count = 0 }} ** 26;
-        return Board{ .points = points, .bar = [2]u8{ 0, 0 }, .bearOff = [2]u8{ 0, 0 } };
+        return Board{
+            .points = [_]Point{.{ .player = null, .count = 0 }} ** 24,
+            .bar = [2]u8{ 0, 0 },
+            .bearOff = [2]u8{ 0, 0 },
+        };
     }
 
-    // TODO: Needs test case(s)
     pub fn movePiece(self: *Self, from: u8, to: u8) void {
-        self.points[from].count -= 1;
-        self.points[to].count += 1;
+        if (from == 25) {
+            self.bar[self.points[to].player.?.color] -= 1;
+        } else {
+            self.points[from].count -= 1;
+            if (self.points[from].count == 0) self.points[from].player = null;
+        }
+
+        if (to == 0 or to == 25) {
+            self.bearOff[self.points[from].player.?.color] += 1;
+        } else {
+            if (self.points[to].player == null) {
+                self.points[to].player = self.points[from].player;
+            }
+            self.points[to].count += 1;
+        }
     }
 
     // Set the bpard for various game types. Will be expanded later
     pub fn dressBoard(self: *Self, players: [2]Player) void {
-        self.points[1] = Point{ .player = players[0], .count = 2 };
-        self.points[12] = Point{ .player = players[0], .count = 5 };
-        self.points[17] = Point{ .player = players[0], .count = 3 };
-        self.points[19] = Point{ .player = players[0], .count = 5 };
+        // Keep the existing implementation, but adjust indices
+        self.points[0] = Point{ .player = players[0], .count = 2 };
+        self.points[11] = Point{ .player = players[0], .count = 5 };
+        self.points[16] = Point{ .player = players[0], .count = 3 };
+        self.points[18] = Point{ .player = players[0], .count = 5 };
 
-        self.points[6] = Point{ .player = players[1], .count = 5 };
-        self.points[8] = Point{ .player = players[1], .count = 3 };
-        self.points[13] = Point{ .player = players[1], .count = 5 };
-        self.points[24] = Point{ .player = players[1], .count = 2 };
+        self.points[5] = Point{ .player = players[1], .count = 5 };
+        self.points[7] = Point{ .player = players[1], .count = 3 };
+        self.points[12] = Point{ .player = players[1], .count = 5 };
+        self.points[23] = Point{ .player = players[1], .count = 2 };
     }
 };
 
@@ -100,7 +116,7 @@ pub const RulesEngine = struct {
 
     // check whether the game is over if player pieces are off the board
     pub fn isGameOver(gameState: *GameState) bool {
-        return (gameState.board.points[25].count == 15 or gameState.board.points[0].count == 15);
+        return (gameState.board.bearOff[0] == 15 or gameState.board.bearOff[1] == 15);
     }
 
     // which player won
@@ -116,38 +132,55 @@ pub const RulesEngine = struct {
 
     // create a hashmap with all possible moves for all points owned by the current player
     // TODO: Needs test case(s)
-    pub fn getAllValidMoves(gameState: *GameState, allocator: std.mem.Allocator) std.AutoHashMap(Point, []Point) {
-        var moves = std.AutoHashMap(Point, [4]Point).init(allocator);
-        defer moves.deinit();
+    pub fn getAllValidMoves(gameState: *GameState, allocator: std.mem.Allocator) !std.AutoHashMap(u8, []u8) {
+        var moves = std.AutoHashMap(u8, []u8).init(allocator);
+        errdefer moves.deinit();
 
-        const internalGameBoard: [26]Point = if (std.mem.eql(gameState.currentPlayer.name, "Player 1")) gameState.board.points else std.mem.reverse(Point, gameState.board.points);
+        const isDouble = gameState.dice[0] == gameState.dice[1];
+        const movesCount = if (isDouble) 4 else 2;
+        const playerIndex = gameState.currentPlayer.color;
 
-        for (internalGameBoard, 0..) |point, i| {
+        // Check if the player has pieces on the bar
+        if (gameState.board.bar[playerIndex] > 0) {
+            var possibleMoves = std.ArrayList(u8).init(allocator);
+            defer possibleMoves.deinit();
+
+            for (0..movesCount) |j| {
+                const targetIndex = if (playerIndex == 0) gameState.dice[j % 2] - 1 else 24 - gameState.dice[j % 2];
+                if (canMove(gameState.currentPlayer, gameState.board.points[targetIndex])) {
+                    try possibleMoves.append(@as(u8, @intCast(targetIndex)));
+                }
+            }
+
+            if (possibleMoves.items.len > 0) {
+                try moves.put(25, try possibleMoves.toOwnedSlice());
+            }
+            return moves;
+        }
+
+        // Regular move generation
+        const direction: i8 = if (playerIndex == 0) 1 else -1;
+        for (gameState.board.points, 0..) |point, i| {
             if (point.player == gameState.currentPlayer) {
-                // NOTE: Doesn't include doubles
-                var pointList = allocator.alloc(Point, 4);
-                defer allocator.free(pointList);
+                var possibleMoves = std.ArrayList(u8).init(allocator);
+                defer possibleMoves.deinit();
 
-                const jump_0 = internalGameBoard[i + gameState.dice[0]];
-                const jump_1 = internalGameBoard[i + gameState.dice[1]];
-
-                const jump_0_validator: bool = canMove(gameState.currentPlayer, jump_0);
-                const jump_1_validator: bool = canMove(gameState.currentPlayer, jump_1);
-
-                if (jump_0_validator) {
-                    pointList[0] = jump_0;
-                    const jump_2 = internalGameBoard[i + gameState.dice[0] + gameState.dice[1]];
-                    if (canMove(gameState.currentPlayer, jump_2)) pointList[2] = jump_2;
-                }
-                if (jump_1_validator) {
-                    pointList[1] = jump_1;
-                    const jump_3 = internalGameBoard[i + gameState.dice[1] + gameState.dice[0]];
-                    if (canMove(gameState.currentPlayer, jump_3)) pointList[3] = jump_3;
+                for (0..movesCount) |j| {
+                    const targetIndex = @as(i8, @intCast(i)) + direction * @as(i8, @intCast(gameState.dice[j % 2]));
+                    if (targetIndex >= 0 and targetIndex < 24) {
+                        const targetPoint = gameState.board.points[@as(usize, @intCast(targetIndex))];
+                        if (canMove(gameState.currentPlayer, targetPoint)) {
+                            try possibleMoves.append(@as(u8, @intCast(targetIndex)));
+                        }
+                    }
                 }
 
-                moves.put(point, pointList);
+                if (possibleMoves.items.len > 0) {
+                    try moves.put(@as(u8, @intCast(i)), try possibleMoves.toOwnedSlice());
+                }
             }
         }
+
         return moves;
     }
 
